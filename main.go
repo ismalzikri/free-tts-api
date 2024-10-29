@@ -26,6 +26,23 @@ func generateAudioFile(text, lang string) error {
 	return nil
 }
 
+// CORS middleware to allow cross-origin requests
+func enableCors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "https://open-reasearch-color-detection.vercel.app")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		// Handle preflight request
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func handleSpeak(w http.ResponseWriter, r *http.Request) {
 	var payload RequestPayload
 	err := json.NewDecoder(r.Body).Decode(&payload)
@@ -56,7 +73,10 @@ func handleSpeak(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/speak", handleSpeak)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/speak", handleSpeak)
+
+	// Apply the CORS middleware
 	log.Println("Server starting on port 8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", enableCors(mux)))
 }
