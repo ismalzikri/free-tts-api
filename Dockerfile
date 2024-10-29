@@ -20,6 +20,9 @@ COPY . .
 # Build the application
 RUN go build -o gtts-service
 
+# Add specific permissions to avoid file access issues
+RUN chmod +x /app/gtts-service
+
 # Final stage: Create a smaller image for running the app
 FROM alpine:3.18
 
