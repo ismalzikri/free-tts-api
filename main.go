@@ -55,8 +55,21 @@ func handleSpeak(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "output.mp3")
 }
 
+func handleTest(w http.ResponseWriter, r *http.Request) {
+	// Test the gtts-cli command directly
+	cmd := exec.Command("gtts-cli", "--lang", "en", "--output", "test_output.mp3", "Hello World")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		http.Error(w, "Failed to execute gTTS command", http.StatusInternalServerError)
+		log.Printf("gTTS command failed: %s\nOutput: %s\n", err, string(output))
+		return
+	}
+	w.Write([]byte("gTTS command executed successfully."))
+}
+
 func main() {
 	http.HandleFunc("/speak", handleSpeak)
+	http.HandleFunc("/test", handleTest)
 	log.Println("Server starting on port 8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
