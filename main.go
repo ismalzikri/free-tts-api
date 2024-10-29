@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 )
 
@@ -33,12 +34,22 @@ func handleSpeak(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Call gTTS using the text and language
+	// Generate the audio file
 	err = generateAudioFile(payload.Text, payload.Lang)
 	if err != nil {
 		http.Error(w, "Failed to generate audio", http.StatusInternalServerError)
 		return
 	}
+
+	// Verify the file exists
+	if _, err := os.Stat("output.mp3"); os.IsNotExist(err) {
+		http.Error(w, "Audio file not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Set the Content-Type to audio/mpeg for MP3
+	w.Header().Set("Content-Type", "audio/mpeg")
+	w.Header().Set("Content-Disposition", "attachment; filename=output.mp3")
 
 	// Serve the audio file to the client
 	http.ServeFile(w, r, "output.mp3")
