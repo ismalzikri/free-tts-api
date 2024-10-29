@@ -1,11 +1,18 @@
-# Use the official Go image as a builder
-FROM golang:1.20 as builder
+# Use a lightweight base image with Go
+FROM golang:1.22.4-alpine AS builder
 
-# Set the working directory inside the container
+# Install gTTS CLI dependencies
+RUN apk add --no-cache python3 py3-pip ffmpeg
+
+# Install gTTS
+RUN pip install gTTS
+
+# Set the working directory
 WORKDIR /app
 
-# Copy Go modules and install dependencies
+# Copy Go modules and download dependencies
 COPY go.mod ./
+RUN go mod download
 
 # Copy the rest of the application code
 COPY . .
@@ -13,17 +20,24 @@ COPY . .
 # Build the application
 RUN go build -o gtts-service
 
-# Use a lightweight base image for running the app
-FROM debian:bullseye-slim
+# Final stage: Create a smaller image for running the app
+FROM alpine:3.18
 
-# Install Python and gTTS CLI
-RUN apt-get update && apt-get install -y python3 python3-pip && pip3 install gtts
+# Install FFmpeg for audio processing
+RUN apk add --no-cache ffmpeg
 
-# Copy the built binary from the builder
-COPY --from=builder /app/gtts-service /gtts-service
+# Copy the built application binary and gTTS installation
+COPY --from=builder /app/gtts-service /app/gtts-service
+COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
+COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
+COPY --from=builder /usr/bin/python3 /usr/bin/python3
+COPY --from=builder /usr/local/bin/gtts-cli /usr/local/bin/gtts-cli
 
-# Expose port 8080
+# Set the working directory
+WORKDIR /app
+
+# Expose the application port
 EXPOSE 8080
 
-# Run the Go binary
-CMD ["/gtts-service"]
+# Run the application
+CMD ["./gtts-service"]
