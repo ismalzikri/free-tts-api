@@ -6,8 +6,7 @@ RUN apk add --no-cache python3 py3-pip ffmpeg
 
 # Create a virtual environment and install gTTS there
 RUN python3 -m venv /opt/venv \
-    && . /opt/venv/bin/activate \
-    && pip install gTTS
+    && /opt/venv/bin/pip install gTTS
 
 # Set the working directory
 WORKDIR /app
@@ -26,7 +25,7 @@ RUN go build -o gtts-service
 FROM alpine:3.18
 
 # Install FFmpeg for audio processing
-RUN apk add --no-cache ffmpeg
+RUN apk add --no-cache ffmpeg python3 py3-pip
 
 # Copy the built application binary and virtual environment with gTTS
 COPY --from=builder /app/gtts-service /app/gtts-service
