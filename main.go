@@ -15,7 +15,7 @@ type RequestPayload struct {
 
 func generateAudioFile(text, lang string) error {
 	// Construct the gTTS command
-	cmd := exec.Command("gtts-cli", "--lang", lang, "--output", "output.mp3", text)
+	cmd := exec.Command("gtts-cli", "--lang", lang, "--output", "--nocheck", "output.mp3", text)
 
 	// Capture output for error handling
 	output, err := cmd.CombinedOutput()
