@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"hash/fnv"
 	"log"
 	"net/http"
-	"os"
 	"os/exec"
+	"sync"
 )
 
 type RequestPayload struct {
@@ -13,17 +15,36 @@ type RequestPayload struct {
 	Lang string `json:"lang"`
 }
 
-func generateAudioFile(text, lang string) error {
-	// Construct the gTTS command
-	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", "--output", "output.mp3", text)
+// Cache to store generated audio files
+var audioCache = sync.Map{}
 
-	// Capture output for error handling
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("gTTS error: %s\n", string(output))
-		return err
+func hashKey(text, lang string) string {
+	h := fnv.New32a()
+	h.Write([]byte(fmt.Sprintf("%s:%s", text, lang)))
+	return fmt.Sprintf("%x", h.Sum32())
+}
+
+// Generates or retrieves cached audio file
+func generateAudioFile(text, lang string) (string, error) {
+	// Hash the text and language to create a unique filename
+	cacheKey := hashKey(text, lang)
+	filename := fmt.Sprintf("output_%s.mp3", cacheKey)
+
+	// Check cache
+	if _, exists := audioCache.Load(cacheKey); exists {
+		return filename, nil
 	}
-	return nil
+
+	// Execute gTTS command to generate audio
+	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", "--output", filename, text)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("gTTS error: %s\n", string(output))
+		return "", err
+	}
+
+	// Store the file in cache and return filename
+	audioCache.Store(cacheKey, filename)
+	return filename, nil
 }
 
 // CORS middleware to allow cross-origin requests
@@ -32,44 +53,34 @@ func enableCors(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "https://open-reasearch-color-detection.vercel.app")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-		// Handle preflight request
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }
 
 func handleSpeak(w http.ResponseWriter, r *http.Request) {
 	var payload RequestPayload
-	err := json.NewDecoder(r.Body).Decode(&payload)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
 
-	// Generate the audio file
-	err = generateAudioFile(payload.Text, payload.Lang)
+	// Generate or fetch cached audio file
+	filename, err := generateAudioFile(payload.Text, payload.Lang)
 	if err != nil {
 		http.Error(w, "Failed to generate audio", http.StatusInternalServerError)
 		return
 	}
 
-	// Verify the file exists
-	if _, err := os.Stat("output.mp3"); os.IsNotExist(err) {
-		http.Error(w, "Audio file not found", http.StatusInternalServerError)
-		return
-	}
-
-	// Set the Content-Type to audio/mpeg for MP3
+	// Set response headers for MP3 file
 	w.Header().Set("Content-Type", "audio/mpeg")
 	w.Header().Set("Content-Disposition", "attachment; filename=output.mp3")
 
 	// Serve the audio file to the client
-	http.ServeFile(w, r, "output.mp3")
+	http.ServeFile(w, r, filename)
 }
 
 func main() {
