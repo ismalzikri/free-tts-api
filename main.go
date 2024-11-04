@@ -36,7 +36,7 @@ func generateAudioFile(text, lang string) (string, error) {
 	}
 
 	// Execute gTTS command to generate audio
-	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", "--output", filename, text)
+	cmd := exec.Command("gtts-cli", "--lang", lang, "--output", filename, text)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("gTTS error: %s\n", string(output))
 		return "", err
