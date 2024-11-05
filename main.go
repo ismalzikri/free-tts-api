@@ -84,7 +84,7 @@ func handleSpeak(w http.ResponseWriter, r *http.Request) {
 	// Set response headers for caching
 	w.Header().Set("Content-Type", "audio/mpeg")
 	w.Header().Set("Content-Disposition", "attachment; filename=output.mp3")
-	w.Header().Set("Cache-Control", "public, max-age=31536000") // Cache for 1 year
+	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Header().Set("ETag", eTag)
 
 	// Serve the audio file to the client
