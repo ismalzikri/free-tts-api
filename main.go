@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -15,6 +16,10 @@ import (
 type RequestPayload struct {
 	Text string `json:"text"`
 	Lang string `json:"lang"`
+}
+
+type ResponsePayload struct {
+	Audio string `json:"audio"` // Base64 encoded audio data
 }
 
 type AudioCacheEntry struct {
@@ -66,7 +71,7 @@ func generateAudioData(text, lang string) ([]byte, error) {
 func enableCors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
@@ -89,10 +94,13 @@ func handleSpeak(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve the audio content from memory
-	w.Header().Set("Content-Type", "audio/mpeg")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Write(audioData)
+	// Convert audio data to Base64 string
+	base64Audio := base64.StdEncoding.EncodeToString(audioData)
+
+	// Send the Base64-encoded audio in JSON format
+	responsePayload := ResponsePayload{Audio: base64Audio}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(responsePayload)
 }
 
 func main() {
