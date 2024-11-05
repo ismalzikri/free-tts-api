@@ -26,7 +26,6 @@ func hashKey(text, lang string) string {
 
 // Generates or retrieves cached audio file
 func generateAudioFile(text, lang string) (string, error) {
-	// Hash the text and language to create a unique filename
 	cacheKey := hashKey(text, lang)
 	filename := fmt.Sprintf("output_%s.mp3", cacheKey)
 
@@ -36,7 +35,7 @@ func generateAudioFile(text, lang string) (string, error) {
 	}
 
 	// Execute gTTS command to generate audio
-	cmd := exec.Command("gtts-cli", "--lang", lang, "--output", filename, text)
+	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", "--output", filename, text)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("gTTS error: %s\n", string(output))
 		return "", err
@@ -68,16 +67,25 @@ func handleSpeak(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate or fetch cached audio file
+	cacheKey := hashKey(payload.Text, payload.Lang)
 	filename, err := generateAudioFile(payload.Text, payload.Lang)
 	if err != nil {
 		http.Error(w, "Failed to generate audio", http.StatusInternalServerError)
 		return
 	}
 
-	// Set response headers for MP3 file
+	// Handle conditional request using ETag
+	eTag := fmt.Sprintf(`"%s"`, cacheKey)
+	if match := r.Header.Get("If-None-Match"); match == eTag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	// Set response headers for caching
 	w.Header().Set("Content-Type", "audio/mpeg")
 	w.Header().Set("Content-Disposition", "attachment; filename=output.mp3")
+	w.Header().Set("Cache-Control", "public, max-age=31536000") // Cache for 1 year
+	w.Header().Set("ETag", eTag)
 
 	// Serve the audio file to the client
 	http.ServeFile(w, r, filename)
