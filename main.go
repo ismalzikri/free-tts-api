@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"os/exec"
 	"sync"
+	"time"
 )
 
 type RequestPayload struct {
@@ -15,7 +17,11 @@ type RequestPayload struct {
 	Lang string `json:"lang"`
 }
 
-// Cache to store generated audio files
+type AudioCacheEntry struct {
+	data      []byte
+	timestamp time.Time
+}
+
 var audioCache = sync.Map{}
 
 func hashKey(text, lang string) string {
@@ -24,32 +30,42 @@ func hashKey(text, lang string) string {
 	return fmt.Sprintf("%x", h.Sum32())
 }
 
-// Generates or retrieves cached audio file
-func generateAudioFile(text, lang string) (string, error) {
+// Generates or retrieves cached audio data
+func getOrGenerateAudio(text, lang string) ([]byte, error) {
 	cacheKey := hashKey(text, lang)
-	filename := fmt.Sprintf("output_%s.mp3", cacheKey)
 
-	// Check cache
-	if _, exists := audioCache.Load(cacheKey); exists {
-		return filename, nil
+	// Check in-memory cache first
+	if entry, exists := audioCache.Load(cacheKey); exists {
+		cachedEntry := entry.(AudioCacheEntry)
+		return cachedEntry.data, nil
 	}
 
-	// Execute gTTS command to generate audio
-	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", "--output", filename, text)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("gTTS error: %s\n", string(output))
-		return "", err
+	// Generate audio if not cached
+	audioData, err := generateAudioData(text, lang)
+	if err != nil {
+		return nil, err
 	}
 
-	// Store the file in cache and return filename
-	audioCache.Store(cacheKey, filename)
-	return filename, nil
+	// Cache the generated audio
+	audioCache.Store(cacheKey, AudioCacheEntry{data: audioData, timestamp: time.Now()})
+	return audioData, nil
+}
+
+// Generate audio data without saving to disk
+func generateAudioData(text, lang string) ([]byte, error) {
+	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 // CORS middleware to allow cross-origin requests
 func enableCors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "https://open-reasearch-color-detection.vercel.app")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == "OPTIONS" {
@@ -67,28 +83,16 @@ func handleSpeak(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cacheKey := hashKey(payload.Text, payload.Lang)
-	filename, err := generateAudioFile(payload.Text, payload.Lang)
+	audioData, err := getOrGenerateAudio(payload.Text, payload.Lang)
 	if err != nil {
 		http.Error(w, "Failed to generate audio", http.StatusInternalServerError)
 		return
 	}
 
-	// Handle conditional request using ETag
-	eTag := fmt.Sprintf(`"%s"`, cacheKey)
-	if match := r.Header.Get("If-None-Match"); match == eTag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-
-	// Set response headers for caching
+	// Serve the audio content from memory
 	w.Header().Set("Content-Type", "audio/mpeg")
-	w.Header().Set("Content-Disposition", "attachment; filename=output.mp3")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Set("ETag", eTag)
-
-	// Serve the audio file to the client
-	http.ServeFile(w, r, filename)
+	w.Write(audioData)
 }
 
 func main() {
