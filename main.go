@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"compress/gzip"
 	"container/list"
 	"encoding/base64"
 	"encoding/json"
@@ -21,7 +20,7 @@ type RequestPayload struct {
 }
 
 type ResponsePayload struct {
-	Audio string `json:"audio"` // Compressed Base64 audio data
+	Audio string `json:"audio"` // Base64 encoded audio data
 }
 
 type AudioCacheEntry struct {
@@ -29,6 +28,7 @@ type AudioCacheEntry struct {
 	timestamp time.Time
 }
 
+// Cache manager with LRU and expiration
 type AudioCache struct {
 	cache      map[string]*list.Element
 	expiration time.Duration
@@ -42,6 +42,7 @@ type cacheItem struct {
 	entry AudioCacheEntry
 }
 
+// NewAudioCache creates a cache with a specified max size and expiration time
 func NewAudioCache(maxSize int, expiration time.Duration) *AudioCache {
 	cache := &AudioCache{
 		cache:      make(map[string]*list.Element),
@@ -102,34 +103,36 @@ func (c *AudioCache) remove(key string) {
 	}
 }
 
+// Helper function to hash the text and language
 func hashKey(text, lang string) string {
 	h := fnv.New32a()
 	h.Write([]byte(fmt.Sprintf("%s:%s", text, lang)))
 	return fmt.Sprintf("%x", h.Sum32())
 }
 
+// Generate or retrieve audio from cache
 func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 	cacheKey := hashKey(text, lang)
+
+	// Check in-memory cache first
 	if data, exists := cache.get(cacheKey); exists {
 		return data, nil
 	}
 
+	// Generate audio if not cached
 	audioData, err := generateAudioData(text, lang)
 	if err != nil {
 		return nil, err
 	}
 
-	compressedData, err := compressAudioData(audioData)
-	if err != nil {
-		return nil, err
-	}
-
-	cache.set(cacheKey, compressedData)
-	return compressedData, nil
+	// Cache the generated audio
+	cache.set(cacheKey, audioData)
+	return audioData, nil
 }
 
+// Generate audio data without saving to disk
 func generateAudioData(text, lang string) ([]byte, error) {
-	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", "--slow", text)
+	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -138,18 +141,7 @@ func generateAudioData(text, lang string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func compressAudioData(data []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(data); err != nil {
-		return nil, err
-	}
-	if err := gz.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
+// CORS middleware to allow cross-origin requests
 func enableCors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -176,19 +168,23 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 		return
 	}
 
+	// Convert audio data to Base64 string
 	base64Audio := base64.StdEncoding.EncodeToString(audioData)
+
+	// Send the Base64-encoded audio in JSON format
 	responsePayload := ResponsePayload{Audio: base64Audio}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(responsePayload)
 }
 
 func main() {
-	audioCache := NewAudioCache(100, 3*time.Hour)
+	audioCache := NewAudioCache(100, 3*time.Hour) // Max 100 items, 3-hour expiration
 	mux := http.NewServeMux()
 	mux.HandleFunc("/speak", func(w http.ResponseWriter, r *http.Request) {
 		handleSpeak(w, r, audioCache)
 	})
 
+	// Apply the CORS middleware
 	log.Println("Server starting on port 8080...")
 	log.Fatal(http.ListenAndServe(":8080", enableCors(mux)))
 }
