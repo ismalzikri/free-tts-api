@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"container/list"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -27,22 +28,95 @@ type AudioCacheEntry struct {
 	timestamp time.Time
 }
 
-var audioCache = sync.Map{}
+// Cache manager with LRU and expiration
+type AudioCache struct {
+	cache      map[string]*list.Element
+	expiration time.Duration
+	maxSize    int
+	mu         sync.Mutex
+	lruList    *list.List
+}
 
+type cacheItem struct {
+	key   string
+	entry AudioCacheEntry
+}
+
+// NewAudioCache creates a cache with a specified max size and expiration time
+func NewAudioCache(maxSize int, expiration time.Duration) *AudioCache {
+	cache := &AudioCache{
+		cache:      make(map[string]*list.Element),
+		expiration: expiration,
+		maxSize:    maxSize,
+		lruList:    list.New(),
+	}
+	go cache.evictExpiredEntries()
+	return cache
+}
+
+func (c *AudioCache) evictExpiredEntries() {
+	for {
+		time.Sleep(c.expiration)
+		c.mu.Lock()
+		for key, elem := range c.cache {
+			if time.Since(elem.Value.(cacheItem).entry.timestamp) > c.expiration {
+				c.remove(key)
+			}
+		}
+		c.mu.Unlock()
+	}
+}
+
+func (c *AudioCache) get(key string) ([]byte, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if elem, exists := c.cache[key]; exists {
+		c.lruList.MoveToFront(elem)
+		return elem.Value.(cacheItem).entry.data, true
+	}
+	return nil, false
+}
+
+func (c *AudioCache) set(key string, data []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if elem, exists := c.cache[key]; exists {
+		c.lruList.MoveToFront(elem)
+		elem.Value = cacheItem{key: key, entry: AudioCacheEntry{data: data, timestamp: time.Now()}}
+	} else {
+		if c.lruList.Len() >= c.maxSize {
+			oldest := c.lruList.Back()
+			if oldest != nil {
+				c.remove(oldest.Value.(cacheItem).key)
+			}
+		}
+		entry := AudioCacheEntry{data: data, timestamp: time.Now()}
+		elem := c.lruList.PushFront(cacheItem{key: key, entry: entry})
+		c.cache[key] = elem
+	}
+}
+
+func (c *AudioCache) remove(key string) {
+	if elem, exists := c.cache[key]; exists {
+		delete(c.cache, key)
+		c.lruList.Remove(elem)
+	}
+}
+
+// Helper function to hash the text and language
 func hashKey(text, lang string) string {
 	h := fnv.New32a()
 	h.Write([]byte(fmt.Sprintf("%s:%s", text, lang)))
 	return fmt.Sprintf("%x", h.Sum32())
 }
 
-// Generates or retrieves cached audio data
-func getOrGenerateAudio(text, lang string) ([]byte, error) {
+// Generate or retrieve audio from cache
+func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 	cacheKey := hashKey(text, lang)
 
 	// Check in-memory cache first
-	if entry, exists := audioCache.Load(cacheKey); exists {
-		cachedEntry := entry.(AudioCacheEntry)
-		return cachedEntry.data, nil
+	if data, exists := cache.get(cacheKey); exists {
+		return data, nil
 	}
 
 	// Generate audio if not cached
@@ -52,7 +126,7 @@ func getOrGenerateAudio(text, lang string) ([]byte, error) {
 	}
 
 	// Cache the generated audio
-	audioCache.Store(cacheKey, AudioCacheEntry{data: audioData, timestamp: time.Now()})
+	cache.set(cacheKey, audioData)
 	return audioData, nil
 }
 
@@ -81,14 +155,14 @@ func enableCors(next http.Handler) http.Handler {
 	})
 }
 
-func handleSpeak(w http.ResponseWriter, r *http.Request) {
+func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 	var payload RequestPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
 
-	audioData, err := getOrGenerateAudio(payload.Text, payload.Lang)
+	audioData, err := getOrGenerateAudio(payload.Text, payload.Lang, cache)
 	if err != nil {
 		http.Error(w, "Failed to generate audio", http.StatusInternalServerError)
 		return
@@ -104,8 +178,11 @@ func handleSpeak(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	audioCache := NewAudioCache(100, 3*time.Hour) // Max 100 items, 3-hour expiration
 	mux := http.NewServeMux()
-	mux.HandleFunc("/speak", handleSpeak)
+	mux.HandleFunc("/speak", func(w http.ResponseWriter, r *http.Request) {
+		handleSpeak(w, r, audioCache)
+	})
 
 	// Apply the CORS middleware
 	log.Println("Server starting on port 8080...")
