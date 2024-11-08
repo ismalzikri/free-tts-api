@@ -28,7 +28,6 @@ type AudioCacheEntry struct {
 	timestamp time.Time
 }
 
-// Cache manager with LRU and expiration
 type AudioCache struct {
 	cache      map[string]*list.Element
 	expiration time.Duration
@@ -130,7 +129,7 @@ func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 	return audioData, nil
 }
 
-// Generate audio data without saving to disk
+// Generate audio data and encode to Opus
 func generateAudioData(text, lang string) ([]byte, error) {
 	// Generate audio using gTTS CLI
 	gttsCmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
@@ -138,17 +137,17 @@ func generateAudioData(text, lang string) ([]byte, error) {
 	gttsCmd.Stdout = &gttsOut
 	if err := gttsCmd.Run(); err != nil {
 		log.Printf("gTTS generation error: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("gTTS generation error: %w", err)
 	}
 
-	// Pipe gTTS output to ffmpeg for Opus encoding
-	ffmpegCmd := exec.Command("ffmpeg", "-f", "wav", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-f", "opus", "pipe:1")
+	// Encode audio to Opus using ffmpeg
+	ffmpegCmd := exec.Command("ffmpeg", "-f", "mp3", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-f", "opus", "pipe:1")
 	ffmpegCmd.Stdin = &gttsOut
 	var opusOut bytes.Buffer
 	ffmpegCmd.Stdout = &opusOut
 	if err := ffmpegCmd.Run(); err != nil {
 		log.Printf("ffmpeg encoding error: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("ffmpeg encoding error: %w", err)
 	}
 
 	return opusOut.Bytes(), nil
@@ -177,6 +176,7 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 
 	audioData, err := getOrGenerateAudio(payload.Text, payload.Lang, cache)
 	if err != nil {
+		log.Printf("Audio generation error: %v", err)
 		http.Error(w, "Failed to generate audio", http.StatusInternalServerError)
 		return
 	}
