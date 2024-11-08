@@ -138,7 +138,17 @@ func generateAudioData(text, lang string) ([]byte, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, err
 	}
-	return out.Bytes(), nil
+
+	// Convert audio data to lower bitrate
+	ffmpegCmd := exec.Command("ffmpeg", "-i", "pipe:0", "-ar", "16000", "-ab", "32k", "-f", "mp3", "pipe:1")
+	ffmpegCmd.Stdin = &out
+	var compressedOut bytes.Buffer
+	ffmpegCmd.Stdout = &compressedOut
+	if err := ffmpegCmd.Run(); err != nil {
+		return nil, err
+	}
+
+	return compressedOut.Bytes(), nil
 }
 
 // CORS middleware to allow cross-origin requests
