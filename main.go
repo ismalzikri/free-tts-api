@@ -137,6 +137,7 @@ func generateAudioData(text, lang string) ([]byte, error) {
 	var gttsOut bytes.Buffer
 	gttsCmd.Stdout = &gttsOut
 	if err := gttsCmd.Run(); err != nil {
+		log.Printf("gTTS generation error: %v", err)
 		return nil, err
 	}
 
@@ -146,6 +147,7 @@ func generateAudioData(text, lang string) ([]byte, error) {
 	var opusOut bytes.Buffer
 	ffmpegCmd.Stdout = &opusOut
 	if err := ffmpegCmd.Run(); err != nil {
+		log.Printf("ffmpeg encoding error: %v", err)
 		return nil, err
 	}
 
