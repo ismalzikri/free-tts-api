@@ -103,17 +103,6 @@ func (c *AudioCache) remove(key string) {
 	}
 }
 
-// Prepopulate the cache with common phrases
-func (c *AudioCache) warmUpCache(phrases []string, lang string) {
-	for _, phrase := range phrases {
-		key := hashKey(phrase, lang)
-		audioData, err := generateAudioData(phrase, lang)
-		if err == nil {
-			c.set(key, audioData)
-		}
-	}
-}
-
 // Helper function to hash the text and language
 func hashKey(text, lang string) string {
 	h := fnv.New32a()
@@ -200,10 +189,6 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 
 func main() {
 	audioCache := NewAudioCache(100, 3*time.Hour) // Max 100 items, 3-hour expiration
-
-	// Prepopulate cache with common phrases
-	commonPhrases := []string{"the color is"}
-	audioCache.warmUpCache(commonPhrases, "en")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/speak", func(w http.ResponseWriter, r *http.Request) {
