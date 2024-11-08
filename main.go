@@ -132,13 +132,24 @@ func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 
 // Generate audio data without saving to disk
 func generateAudioData(text, lang string) ([]byte, error) {
-	cmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	// Generate audio using gTTS CLI
+	gttsCmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
+	var gttsOut bytes.Buffer
+	gttsCmd.Stdout = &gttsOut
+	if err := gttsCmd.Run(); err != nil {
 		return nil, err
 	}
-	return out.Bytes(), nil
+
+	// Pipe gTTS output to ffmpeg for Opus encoding
+	ffmpegCmd := exec.Command("ffmpeg", "-f", "wav", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-f", "opus", "pipe:1")
+	ffmpegCmd.Stdin = &gttsOut
+	var opusOut bytes.Buffer
+	ffmpegCmd.Stdout = &opusOut
+	if err := ffmpegCmd.Run(); err != nil {
+		return nil, err
+	}
+
+	return opusOut.Bytes(), nil
 }
 
 // CORS middleware to allow cross-origin requests
