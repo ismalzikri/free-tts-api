@@ -28,6 +28,7 @@ type AudioCacheEntry struct {
 	timestamp time.Time
 }
 
+// Cache manager with LRU and expiration
 type AudioCache struct {
 	cache      map[string]*list.Element
 	expiration time.Duration
@@ -102,6 +103,17 @@ func (c *AudioCache) remove(key string) {
 	}
 }
 
+// Prepopulate the cache with common phrases
+func (c *AudioCache) warmUpCache(phrases []string, lang string) {
+	for _, phrase := range phrases {
+		key := hashKey(phrase, lang)
+		audioData, err := generateAudioData(phrase, lang)
+		if err == nil {
+			c.set(key, audioData)
+		}
+	}
+}
+
 // Helper function to hash the text and language
 func hashKey(text, lang string) string {
 	h := fnv.New32a()
@@ -129,28 +141,25 @@ func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 	return audioData, nil
 }
 
-// Generate audio data and encode to Opus
+// Generate audio data using gTTS and FFmpeg with Opus codec and reduced bitrate
 func generateAudioData(text, lang string) ([]byte, error) {
-	// Generate audio using gTTS CLI
+	// Generate audio using gtts-cli
 	gttsCmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
 	var gttsOut bytes.Buffer
 	gttsCmd.Stdout = &gttsOut
 	if err := gttsCmd.Run(); err != nil {
-		log.Printf("gTTS generation error: %v", err)
-		return nil, fmt.Errorf("gTTS generation error: %w", err)
+		return nil, err
 	}
 
-	// Encode audio to Opus using ffmpeg
-	ffmpegCmd := exec.Command("ffmpeg", "-f", "mp3", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-f", "opus", "pipe:1")
+	// Convert to Opus codec with a reduced bitrate using FFmpeg
+	ffmpegCmd := exec.Command("ffmpeg", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-f", "opus", "pipe:1")
 	ffmpegCmd.Stdin = &gttsOut
-	var opusOut bytes.Buffer
-	ffmpegCmd.Stdout = &opusOut
+	var ffmpegOut bytes.Buffer
+	ffmpegCmd.Stdout = &ffmpegOut
 	if err := ffmpegCmd.Run(); err != nil {
-		log.Printf("ffmpeg encoding error: %v", err)
-		return nil, fmt.Errorf("ffmpeg encoding error: %w", err)
+		return nil, err
 	}
-
-	return opusOut.Bytes(), nil
+	return ffmpegOut.Bytes(), nil
 }
 
 // CORS middleware to allow cross-origin requests
@@ -176,7 +185,6 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 
 	audioData, err := getOrGenerateAudio(payload.Text, payload.Lang, cache)
 	if err != nil {
-		log.Printf("Audio generation error: %v", err)
 		http.Error(w, "Failed to generate audio", http.StatusInternalServerError)
 		return
 	}
@@ -192,6 +200,11 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 
 func main() {
 	audioCache := NewAudioCache(100, 3*time.Hour) // Max 100 items, 3-hour expiration
+
+	// Prepopulate cache with common phrases
+	commonPhrases := []string{"the color is"}
+	audioCache.warmUpCache(commonPhrases, "en")
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/speak", func(w http.ResponseWriter, r *http.Request) {
 		handleSpeak(w, r, audioCache)
