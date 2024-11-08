@@ -184,6 +184,7 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 	// Send the Base64-encoded audio in JSON format
 	responsePayload := ResponsePayload{Audio: base64Audio}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
 	json.NewEncoder(w).Encode(responsePayload)
 }
 
