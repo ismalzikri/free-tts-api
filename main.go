@@ -140,15 +140,7 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Convert to Opus codec with a reduced bitrate using FFmpeg
-	ffmpegCmd := exec.Command("ffmpeg", "-f", "mp3", "-i", "pipe:0", "-b:a", "24k", "-f", "mp3", "pipe:1")
-	ffmpegCmd.Stdin = &gttsOut
-	var ffmpegOut bytes.Buffer
-	ffmpegCmd.Stdout = &ffmpegOut
-	if err := ffmpegCmd.Run(); err != nil {
-		return nil, err
-	}
-	return ffmpegOut.Bytes(), nil
+	return gttsOut.Bytes(), nil
 }
 
 // CORS middleware to allow cross-origin requests
