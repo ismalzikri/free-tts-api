@@ -141,7 +141,7 @@ func generateAudioData(text, lang string) ([]byte, error) {
 	}
 
 	// Convert to Opus codec with a reduced bitrate using FFmpeg
-	ffmpegCmd := exec.Command("ffmpeg", "-f", "mp3", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-f", "opus", "pipe:1")
+	ffmpegCmd := exec.Command("ffmpeg", "-f", "mp3", "-i", "pipe:0", "-b:a", "24k", "-f", "mp3", "pipe:1")
 	ffmpegCmd.Stdin = &gttsOut
 	var ffmpegOut bytes.Buffer
 	ffmpegCmd.Stdout = &ffmpegOut
