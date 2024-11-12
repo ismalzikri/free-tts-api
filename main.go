@@ -130,7 +130,7 @@ func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 	return audioData, nil
 }
 
-// Generate audio data with gTTS and encode with FFmpeg at lower bitrate, Opus encoding
+// Generate audio data with gTTS and encode with FFmpeg at optimized settings
 func generateAudioData(text, lang string) ([]byte, error) {
 	// Generate audio using gtts-cli
 	gttsCmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
@@ -140,8 +140,18 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Encode audio using FFmpeg with Opus codec and lower bitrate
-	ffmpegCmd := exec.Command("ffmpeg", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-f", "opus", "pipe:1")
+	// Encode audio using FFmpeg with Opus codec and faster compression
+	ffmpegCmd := exec.Command(
+		"ffmpeg",
+		"-i", "pipe:0",
+		"-c:a", "libopus", // Opus codec for efficient speech compression
+		"-b:a", "32k", // 32 kbps bitrate to reduce file size
+		"-compression_level", "1", // Faster compression level for reduced processing time
+		"-preset", "ultrafast", // Fastest encoding preset available
+		"-ar", "16000", // Lower sample rate (16kHz) suitable for speech
+		"-f", "opus", // Output format
+		"pipe:1",
+	)
 	ffmpegCmd.Stdin = &gttsOut
 	var encodedOut bytes.Buffer
 	ffmpegCmd.Stdout = &encodedOut
