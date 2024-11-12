@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"container/list"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -191,15 +192,14 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 		return
 	}
 
-	// // Convert audio data to Base64 string
-	// base64Audio := base64.StdEncoding.EncodeToString(audioData)
+	// Convert audio data to Base64 string
+	base64Audio := base64.StdEncoding.EncodeToString(audioData)
 
-	// // Send the Base64-encoded audio in JSON format
-	// responsePayload := ResponsePayload{Audio: base64Audio}
+	// Send the Base64-encoded audio in JSON format
+	responsePayload := ResponsePayload{Audio: base64Audio}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	// json.NewEncoder(w).Encode(responsePayload)
-	w.Write(audioData)
+	json.NewEncoder(w).Encode(responsePayload)
 }
 
 func main() {
