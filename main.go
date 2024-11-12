@@ -199,7 +199,7 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 	w.Header().Set("Connection", "keep-alive") // Reuse connection
 
 	// Send the JSON response
-	json.NewEncoder(w).Encode(responsePayload)
+	w.Write(responseJSON)
 }
 
 func main() {
