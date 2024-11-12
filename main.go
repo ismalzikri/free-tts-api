@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"container/list"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -179,27 +178,14 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 		return
 	}
 
-	// Convert audio data to Base64 string
-	base64Audio := base64.StdEncoding.EncodeToString(audioData)
-
-	// Prepare the response payload
-	responsePayload := ResponsePayload{Audio: base64Audio}
-
-	// Convert the response payload to JSON for Content-Length header calculation
-	responseJSON, err := json.Marshal(responsePayload)
-	if err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
-
-	// Set headers for optimized response
-	w.Header().Set("Content-Type", "application/json")
+	// Set headers for binary audio data response
+	w.Header().Set("Content-Type", "audio/mpeg") // or "audio/opus"
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(responseJSON)))
-	w.Header().Set("Connection", "keep-alive") // Reuse connection
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(audioData)))
+	w.Header().Set("Connection", "keep-alive")
 
-	// Send the JSON response
-	w.Write(responseJSON)
+	// Write the raw binary audio data to the response
+	w.Write(audioData)
 }
 
 func main() {
