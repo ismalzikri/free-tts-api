@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"container/list"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"log"
@@ -12,6 +11,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 type RequestPayload struct {
@@ -41,6 +42,8 @@ type cacheItem struct {
 	key   string
 	entry AudioCacheEntry
 }
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // NewAudioCache creates a cache with a specified max size and expiration time
 func NewAudioCache(maxSize int, expiration time.Duration) *AudioCache {
@@ -148,7 +151,7 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		"-b:a", "16k", // 16kb file reduce file
 		"-compression_level", "1", // Faster compression level for reduced processing time
 		"-preset", "ultrafast", // Fastest encoding preset available
-		"-ar", "12000", // Lower sample rate (16kHz) suitable for speech
+		"-ar", "12000", // Lower sample rate (12kHz) suitable for speech
 		"-f", "opus", // Output format
 		"pipe:1",
 	)
@@ -209,7 +212,15 @@ func main() {
 		handleSpeak(w, r, audioCache)
 	})
 
-	// Apply the CORS middleware
+	// Create a custom HTTP server with optimized keep-alive and timeouts
+	server := &http.Server{
+		Addr:         ":8080",
+		Handler:      enableCors(mux),
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second, // Keep connection open for reuse
+	}
+
 	log.Println("Server starting on port 8080...")
-	log.Fatal(http.ListenAndServe(":8080", enableCors(mux)))
+	log.Fatal(server.ListenAndServe())
 }
