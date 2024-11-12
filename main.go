@@ -151,9 +151,10 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		"-b:a", "16k", // 16kb file reduce file
 		"-compression_level", "1", // Faster compression level for reduced processing time
 		"-preset", "ultrafast", // Fastest encoding preset available
-		"-ar", "12000", // Lower sample rate (12kHz) suitable for speech
+		"-ar", "16000", // Lower sample rate (12kHz) suitable for speech
 		"-f", "opus", // Output format
 		"pipe:1",
+		"atempo=1.5",
 	)
 
 	ffmpegCmd.Stdin = &gttsOut
