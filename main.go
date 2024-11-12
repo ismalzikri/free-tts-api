@@ -143,14 +143,14 @@ func generateAudioData(text, lang string) ([]byte, error) {
 	// Compress the audio with FFmpeg for lower latency and smaller size
 	ffmpegCmd := exec.Command(
 		"ffmpeg",
-		"-i", "pipe:0", // Input from gTTS output (raw audio)
-		"-ar", "16000", // Set sample rate to 16 kHz
-		"-b:a", "16k", // Set audio bitrate to 16 kbps
-		"-f", "mp3", // Output as MP3 format
-		"-acodec", "libmp3lame", // Use the LAME codec for MP3
-		"-compression_level", "1", // Set compression level for faster processing
-		"-preset", "ultrafast", // Set the FFmpeg preset to ultrafast
-		"pipe:1", // Output to stdout for processing
+		"-i", "pipe:0",
+		"-c:a", "libopus", // Opus codec for efficient speech compression
+		"-b:a", "16k", // 16kb file reduce file
+		"-compression_level", "1", // Faster compression level for reduced processing time
+		"-preset", "ultrafast", // Fastest encoding preset available
+		"-ar", "16000", // Lower sample rate (16kHz) suitable for speech
+		"-f", "opus", // Output format
+		"pipe:1",
 	)
 
 	ffmpegCmd.Stdin = &gttsOut
