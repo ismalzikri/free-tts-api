@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"container/list"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -140,17 +139,18 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Compress the audio with FFmpeg for lower latency and smaller size
+	// Use FFmpeg with optimized settings for Opus encoding at 32kHz
 	ffmpegCmd := exec.Command(
 		"ffmpeg",
-		"-i", "pipe:0",
-		"-c:a", "libopus", // Opus codec for efficient speech compression
-		"-b:a", "16k", // 16kb file reduce file
-		"-compression_level", "1", // Faster compression level for reduced processing time
-		"-preset", "ultrafast", // Fastest encoding preset available
-		"-ar", "16000", // Lower sample rate (16kHz) suitable for speech
-		"-f", "opus", // Output format
-		"pipe:1",
+		"-i", "pipe:0", // Input from gTTS output
+		"-ar", "32000", // 32 kHz sample rate
+		"-b:a", "16k", // Lower bitrate to 16 kbps for faster encoding
+		"-f", "opus", // Output in Opus format
+		"-acodec", "libopus", // Use the Opus codec
+		"-compression_level", "0", // Minimal compression for speed
+		"-preset", "ultrafast", // Ultra-fast preset
+		"-application", "voip", // Target low-latency speech
+		"pipe:1", // Output to stdout
 	)
 
 	ffmpegCmd.Stdin = &gttsOut
@@ -191,14 +191,15 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 		return
 	}
 
-	// Convert audio data to Base64 string
-	base64Audio := base64.StdEncoding.EncodeToString(audioData)
+	// // Convert audio data to Base64 string
+	// base64Audio := base64.StdEncoding.EncodeToString(audioData)
 
-	// Send the Base64-encoded audio in JSON format
-	responsePayload := ResponsePayload{Audio: base64Audio}
-	w.Header().Set("Content-Type", "application/json")
+	// // Send the Base64-encoded audio in JSON format
+	// responsePayload := ResponsePayload{Audio: base64Audio}
+	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	json.NewEncoder(w).Encode(responsePayload)
+	// json.NewEncoder(w).Encode(responsePayload)
+	w.Write(audioData)
 }
 
 func main() {
