@@ -145,10 +145,10 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		"ffmpeg",
 		"-i", "pipe:0",
 		"-c:a", "libopus", // Opus codec for efficient speech compression
-		"-b:a", "32k", // 16kb file reduce file
+		"-b:a", "16k", // 16kb file reduce file
 		"-compression_level", "1", // Faster compression level for reduced processing time
 		"-preset", "ultrafast", // Fastest encoding preset available
-		"-ar", "16000", // Lower sample rate (16kHz) suitable for speech
+		"-ar", "12000", // Lower sample rate (16kHz) suitable for speech
 		"-f", "opus", // Output format
 		"pipe:1",
 	)
