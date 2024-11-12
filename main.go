@@ -140,7 +140,16 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		return nil, err
 	}
 
-	return gttsOut.Bytes(), nil
+	// Convert audio to lower sample rate using FFmpeg
+	ffmpegCmd := exec.Command("ffmpeg", "-i", "pipe:0", "-ar", "16000", "-ac", "1", "-f", "wav", "pipe:1")
+	ffmpegCmd.Stdin = &gttsOut
+	var ffmpegOut bytes.Buffer
+	ffmpegCmd.Stdout = &ffmpegOut
+	if err := ffmpegCmd.Run(); err != nil {
+		return nil, err
+	}
+
+	return ffmpegOut.Bytes(), nil
 }
 
 // CORS middleware to allow cross-origin requests
@@ -173,11 +182,24 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 	// Convert audio data to Base64 string
 	base64Audio := base64.StdEncoding.EncodeToString(audioData)
 
-	// Send the Base64-encoded audio in JSON format
+	// Prepare the response payload
 	responsePayload := ResponsePayload{Audio: base64Audio}
+
+	// Convert the response payload to JSON for Content-Length header calculation
+	responseJSON, err := json.Marshal(responsePayload)
+	if err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+
+	// Set headers for optimized response
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	json.NewEncoder(w).Encode(responsePayload)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(responseJSON)))
+	w.Header().Set("Connection", "keep-alive") // Reuse connection
+
+	// Send the JSON response
+	w.Write(responseJSON)
 }
 
 func main() {
