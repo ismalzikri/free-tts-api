@@ -132,7 +132,7 @@ func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 
 // Generate audio data with gTTS and encode with FFmpeg at optimized settings
 func generateAudioData(text, lang string) ([]byte, error) {
-	// Generate audio using gtts-cli
+	// Generate raw audio with gTTS
 	gttsCmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
 	var gttsOut bytes.Buffer
 	gttsCmd.Stdout = &gttsOut
@@ -140,26 +140,28 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Encode audio using FFmpeg with Opus codec and faster compression
+	// Compress the audio with FFmpeg for lower latency and smaller size
 	ffmpegCmd := exec.Command(
 		"ffmpeg",
-		"-i", "pipe:0",
-		"-c:a", "libopus", // Opus codec for efficient speech compression
-		"-b:a", "32k", // 32 kbps bitrate to reduce file size
-		"-compression_level", "1", // Faster compression level for reduced processing time
-		"-preset", "ultrafast", // Fastest encoding preset available
-		"-ar", "16000", // Lower sample rate (16kHz) suitable for speech
-		"-f", "opus", // Output format
-		"pipe:1",
+		"-i", "pipe:0", // Input from gTTS output (raw audio)
+		"-ar", "16000", // Set sample rate to 16 kHz
+		"-b:a", "16k", // Set audio bitrate to 16 kbps
+		"-f", "mp3", // Output as MP3 format
+		"-acodec", "libmp3lame", // Use the LAME codec for MP3
+		"-compression_level", "1", // Set compression level for faster processing
+		"-preset", "ultrafast", // Set the FFmpeg preset to ultrafast
+		"pipe:1", // Output to stdout for processing
 	)
+
 	ffmpegCmd.Stdin = &gttsOut
-	var encodedOut bytes.Buffer
-	ffmpegCmd.Stdout = &encodedOut
+	var ffmpegOut bytes.Buffer
+	ffmpegCmd.Stdout = &ffmpegOut
+
 	if err := ffmpegCmd.Run(); err != nil {
 		return nil, err
 	}
 
-	return encodedOut.Bytes(), nil
+	return ffmpegOut.Bytes(), nil
 }
 
 // CORS middleware to allow cross-origin requests
