@@ -140,18 +140,17 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Use FFmpeg with optimized settings for Opus encoding at 32kHz
+	// Compress the audio with FFmpeg for lower latency and smaller size
 	ffmpegCmd := exec.Command(
 		"ffmpeg",
-		"-i", "pipe:0", // Input from gTTS output
-		"-ar", "32000", // 32 kHz sample rate
-		"-b:a", "16k", // Lower bitrate to 16 kbps for faster encoding
-		"-f", "opus", // Output in Opus format
-		"-acodec", "libopus", // Use the Opus codec
-		"-compression_level", "0", // Minimal compression for speed
-		"-preset", "ultrafast", // Ultra-fast preset
-		"-application", "voip", // Target low-latency speech
-		"pipe:1", // Output to stdout
+		"-i", "pipe:0",
+		"-c:a", "libopus", // Opus codec for efficient speech compression
+		"-b:a", "32k", // 16kb file reduce file
+		"-compression_level", "1", // Faster compression level for reduced processing time
+		"-preset", "ultrafast", // Fastest encoding preset available
+		"-ar", "16000", // Lower sample rate (16kHz) suitable for speech
+		"-f", "opus", // Output format
+		"pipe:1",
 	)
 
 	ffmpegCmd.Stdin = &gttsOut
