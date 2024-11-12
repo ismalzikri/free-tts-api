@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"container/list"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -129,7 +130,7 @@ func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 	return audioData, nil
 }
 
-// Generate audio data using gTTS and FFmpeg with Opus codec and reduced bitrate
+// Generate audio data with gTTS and encode with FFmpeg at lower bitrate, Opus encoding
 func generateAudioData(text, lang string) ([]byte, error) {
 	// Generate audio using gtts-cli
 	gttsCmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
@@ -139,16 +140,16 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Convert audio to lower sample rate using FFmpeg
-	ffmpegCmd := exec.Command("ffmpeg", "-i", "pipe:0", "-ar", "16000", "-ac", "1", "-f", "wav", "pipe:1")
+	// Encode audio using FFmpeg with Opus codec and lower bitrate
+	ffmpegCmd := exec.Command("ffmpeg", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-f", "opus", "pipe:1")
 	ffmpegCmd.Stdin = &gttsOut
-	var ffmpegOut bytes.Buffer
-	ffmpegCmd.Stdout = &ffmpegOut
+	var encodedOut bytes.Buffer
+	ffmpegCmd.Stdout = &encodedOut
 	if err := ffmpegCmd.Run(); err != nil {
 		return nil, err
 	}
 
-	return ffmpegOut.Bytes(), nil
+	return encodedOut.Bytes(), nil
 }
 
 // CORS middleware to allow cross-origin requests
@@ -178,14 +179,14 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 		return
 	}
 
-	// Set headers for binary audio data response
-	w.Header().Set("Content-Type", "audio/mpeg") // or "audio/opus"
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(audioData)))
-	w.Header().Set("Connection", "keep-alive")
+	// Convert audio data to Base64 string
+	base64Audio := base64.StdEncoding.EncodeToString(audioData)
 
-	// Write the raw binary audio data to the response
-	w.Write(audioData)
+	// Send the Base64-encoded audio in JSON format
+	responsePayload := ResponsePayload{Audio: base64Audio}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	json.NewEncoder(w).Encode(responsePayload)
 }
 
 func main() {
