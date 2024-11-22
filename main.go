@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,9 +114,14 @@ func hashKey(text, lang string) string {
 	return fmt.Sprintf("%x", h.Sum32())
 }
 
-// Generate or retrieve audio from cache
-func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
-	cacheKey := hashKey(text, lang)
+// Detects if the request comes from Safari based on the User-Agent header
+func isSafari(userAgent string) bool {
+	// Safari User-Agent typically contains "Safari" but not "Chrome" (to exclude Chrome-based browsers)
+	return strings.Contains(userAgent, "Safari") && !strings.Contains(userAgent, "Chrome")
+}
+
+func getOrGenerateAudio(text, lang string, cache *AudioCache, useOpus bool) ([]byte, error) {
+	cacheKey := fmt.Sprintf("%s:%t", hashKey(text, lang), useOpus)
 
 	// Check in-memory cache first
 	if data, exists := cache.get(cacheKey); exists {
@@ -123,7 +129,7 @@ func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 	}
 
 	// Generate audio if not cached
-	audioData, err := generateAudioData(text, lang)
+	audioData, err := generateAudioData(text, lang, useOpus)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +139,7 @@ func getOrGenerateAudio(text, lang string, cache *AudioCache) ([]byte, error) {
 	return audioData, nil
 }
 
-// Generate audio data with gTTS and encode with FFmpeg at optimized settings
-func generateAudioData(text, lang string) ([]byte, error) {
+func generateAudioData(text, lang string, useOpus bool) ([]byte, error) {
 	// Generate raw audio with gTTS
 	gttsCmd := exec.Command("gtts-cli", "--lang", lang, "--nocheck", text)
 	var gttsOut bytes.Buffer
@@ -143,18 +148,31 @@ func generateAudioData(text, lang string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Compress the audio with FFmpeg for lower latency and smaller size
-	ffmpegCmd := exec.Command(
-		"ffmpeg",
-		"-i", "pipe:0",
-		"-c:a", "libopus", // Opus codec for efficient speech compression
-		"-b:a", "16k", // 16kb file reduce file
-		"-compression_level", "1", // Faster compression level for reduced processing time
-		"-preset", "ultrafast", // Fastest encoding preset available
-		"-ar", "16000", // Lower sample rate (16kHz) suitable for speech
-		"-f", "opus", // Output format
-		"pipe:1",
-	)
+	// Prepare FFmpeg command based on the codec
+	var ffmpegCmd *exec.Cmd
+	if useOpus {
+		ffmpegCmd = exec.Command(
+			"ffmpeg",
+			"-i", "pipe:0",
+			"-c:a", "libopus",
+			"-b:a", "16k",
+			"-compression_level", "1",
+			"-preset", "ultrafast",
+			"-ar", "16000",
+			"-f", "opus",
+			"pipe:1",
+		)
+	} else {
+		ffmpegCmd = exec.Command(
+			"ffmpeg",
+			"-i", "pipe:0",
+			"-c:a", "aac",
+			"-b:a", "64k", // AAC bit rate, adjusted for compatibility
+			"-ar", "16000",
+			"-f", "adts", // ADTS format for AAC
+			"pipe:1",
+		)
+	}
 
 	ffmpegCmd.Stdin = &gttsOut
 	var ffmpegOut bytes.Buffer
@@ -191,7 +209,11 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 		return
 	}
 
-	audioData, err := getOrGenerateAudio(payload.Text, payload.Lang, cache)
+	// Detect Safari from User-Agent
+	userAgent := r.Header.Get("User-Agent")
+	useOpus := !isSafari(userAgent)
+
+	audioData, err := getOrGenerateAudio(payload.Text, payload.Lang, cache, useOpus)
 	if err != nil {
 		http.Error(w, "Failed to generate audio", http.StatusInternalServerError)
 		return
