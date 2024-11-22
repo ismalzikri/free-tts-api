@@ -208,7 +208,7 @@ func handleSpeak(w http.ResponseWriter, r *http.Request, cache *AudioCache) {
 }
 
 func main() {
-	audioCache := NewAudioCache(100, 3*time.Hour) // Max 100 items, 3-hour expiration
+	audioCache := NewAudioCache(200, 24*time.Hour) // Max 200 items, 24-hour expiration
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/speak", func(w http.ResponseWriter, r *http.Request) {
